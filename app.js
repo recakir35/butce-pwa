@@ -410,7 +410,7 @@ function handleConnectClick() {
   try {
     tokenClient.requestAccessToken({ prompt: "consent" });
   } catch (err) {
-    setGateMessage(`Bağlantı penceresi açılamadı: ${err?.message || err}`);
+    setGateMessage("Hata: " + (err && err.message ? err.message : String(err)));
   }
 }
 
