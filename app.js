@@ -77,37 +77,11 @@ function getAvailablePeriods(state, basePeriod) {
   return Array.from(set).sort();
 }
 
-function setGateMessage(msg) {
-  const gateStatus = document.getElementById("driveGateStatus");
-  if (gateStatus) gateStatus.textContent = msg;
-}
-
 function setDriveStatus(text, isOk) {
   const el = document.getElementById("driveStatusText");
   if (!el) return;
   el.textContent = text;
   el.classList.toggle("connected", Boolean(isOk));
-}
-
-function applyStrictDriveLock() {
-  const gateEl = document.getElementById("driveGate");
-  const workspaceEl = document.getElementById("appWorkspace");
-
-  if (!driveConnected) {
-    if (gateEl) gateEl.classList.remove("hidden");
-    if (workspaceEl) workspaceEl.classList.add("hidden");
-
-    ["expenseTableBody", "ccTableBody", "incomeTableBody", "notesTableBody", "periodSelect"].forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) el.innerHTML = "";
-    });
-    const ccTotalEl = document.getElementById("ccMonthlyInstallmentTotal");
-    if (ccTotalEl) ccTotalEl.textContent = "0,00 TL";
-    return;
-  }
-
-  if (gateEl) gateEl.classList.add("hidden");
-  if (workspaceEl) workspaceEl.classList.remove("hidden");
 }
 
 function getInstallmentAmount(card) {
@@ -123,7 +97,7 @@ function getCreditCardMonthlyTotal(period) {
 
 function renderPeriodSelect() {
   const selectEl = document.getElementById("periodSelect");
-  if (!selectEl || !driveConnected) return;
+  if (!selectEl) return;
 
   const periods = getAvailablePeriods(appState, appState.activePeriod);
   if (!appState.activePeriod || !periods.includes(appState.activePeriod)) {
@@ -141,8 +115,6 @@ function renderPeriodSelect() {
 }
 
 function renderExpensesAndIncomes() {
-  if (!driveConnected) return;
-
   const expBody = document.getElementById("expenseTableBody");
   const ccBody = document.getElementById("ccTableBody");
   const incBody = document.getElementById("incomeTableBody");
@@ -415,15 +387,12 @@ function closeCcModal() {
 }
 
 function renderAll(triggerSync = false) {
-  applyStrictDriveLock();
-  if (!driveConnected) return;
-
   renderPeriodSelect();
   renderExpensesAndIncomes();
   if (notesApi) {
     notesApi.renderNotes(appState.activePeriod, true);
   }
-  if (triggerSync) {
+  if (triggerSync && driveConnected) {
     scheduleAutoDriveSync();
   }
 }
@@ -532,60 +501,40 @@ function scheduleAutoDriveSync() {
 function ensureTokenClient() {
   if (tokenClient) return true;
   if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) {
-    setGateMessage("Google giriş servisi henüz yüklenmedi, 1-2 sn sonra tekrar basın.");
+    setDriveStatus("Drive servisi yükleniyor...", false);
     return false;
   }
 
-  try {
-    tokenClient = window.google.accounts.oauth2.initTokenClient({
-      client_id: DRIVE_CLIENT_ID,
-      scope: DRIVE_SCOPE,
-      callback: async (resp) => {
-        if (resp && resp.error) {
-          driveConnected = false;
-          driveAccessToken = null;
-          setGateMessage(`Google OAuth Hatası: ${resp.error} (${resp.error_description || ""})`);
-          renderAll(false);
-          return;
-        }
-
-        if (resp && resp.access_token) {
-          driveAccessToken = resp.access_token;
-          driveConnected = true;
-          appState = loadLocalState();
-          setDriveStatus("Drive: Bağlandı", true);
-          try {
-            await loadRemoteStateIfExists();
-          } catch {}
-          renderAll(false);
-        } else {
-          driveConnected = false;
-          driveAccessToken = null;
-          setGateMessage("Drive bağlantısı tamamlanmadı.");
-          renderAll(false);
-        }
+  tokenClient = window.google.accounts.oauth2.initTokenClient({
+    client_id: DRIVE_CLIENT_ID,
+    scope: DRIVE_SCOPE,
+    callback: async (resp) => {
+      if (resp && resp.access_token) {
+        driveAccessToken = resp.access_token;
+        driveConnected = true;
+        setDriveStatus("Drive: Bağlandı", true);
+        try {
+          await loadRemoteStateIfExists();
+        } catch {}
+        renderAll(false);
+      } else {
+        driveConnected = false;
+        driveAccessToken = null;
+        setDriveStatus("Drive: Bağlanamadı", false);
       }
-    });
-    return true;
-  } catch (err) {
-    setGateMessage(`İstemci başlatma hatası: ${err?.message || err}`);
-    return false;
-  }
+    }
+  });
+  return true;
 }
 
 function handleConnectClick() {
   if (!ensureTokenClient()) return;
-  try {
-    tokenClient.requestAccessToken({ prompt: "consent" });
-  } catch (err) {
-    setGateMessage(`Bağlantı penceresi açılamadı: ${err?.message || err}`);
-  }
+  tokenClient.requestAccessToken({ prompt: "consent" });
 }
 
 document.addEventListener("DOMContentLoaded", () => {
   appState = loadLocalState();
-  driveConnected = false;
-  applyStrictDriveLock();
+  setDriveStatus("Drive: Yerel Mod", false);
 
   notesApi = initNotesModule({
     getState: () => appState,
@@ -598,7 +547,7 @@ document.addEventListener("DOMContentLoaded", () => {
       renderAll(shouldSync);
     }
   });
-  notesApi.setDriveReadyGetter(() => driveConnected);
+  notesApi.setDriveReadyGetter(() => true);
 
   document.getElementById("driveConnectBtn")?.addEventListener("click", handleConnectClick);
 
@@ -623,7 +572,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.getElementById("addPeriodBtn")?.addEventListener("click", () => {
-    if (!driveConnected) return;
     const input = prompt("Yeni dönem girin (YYYY-AA, örn: 2026-12):", appState.activePeriod || "2026-12");
     if (!input) return;
     const clean = input.trim();
@@ -637,7 +585,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.getElementById("deletePeriodBtn")?.addEventListener("click", () => {
-    if (!driveConnected) return;
     const p = appState.activePeriod;
     if (!p || !appState.periods[p]) return;
     if (!confirm(`${p} dönemini silmek istiyor musunuz?`)) return;
@@ -753,15 +700,10 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.getElementById("periodSelect")?.addEventListener("change", (e) => {
-    if (!driveConnected) return;
     appState.activePeriod = e.target.value;
     saveLocalState();
     renderAll(false);
   });
 
-  window.addEventListener("load", () => {
-    setTimeout(() => {
-      ensureTokenClient();
-    }, 300);
-  });
+  renderAll(false);
 });
