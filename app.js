@@ -3,13 +3,14 @@ import { initNotesModule, formatMoneyTR } from "./notes.js";
 const STORAGE_KEY = "butce_takip_state_v1";
 const DRIVE_FILE_NAME = "hesap_kalemleri.json";
 const DRIVE_FOLDER_NAME = "ButceArsiv";
-const DRIVE_CLIENT_ID = window.GOOGLE_DRIVE_CLIENT_ID || "";
+const DRIVE_CLIENT_ID = window.GOOGLE_DRIVE_CLIENT_ID || "BURAYA_KENDI_CLIENT_ID_YAZIN";
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 
 let driveAccessToken = null;
 let tokenClient = null;
 let driveConnected = false;
 let autoSyncTimer = null;
+let notesApi = null;
 
 function createEmptyState() {
   return {
@@ -62,8 +63,8 @@ function getAvailablePeriods(state, basePeriod) {
   const set = new Set(Object.keys((state && state.periods) || {}));
   const seed = basePeriod || (state && state.activePeriod) || "2026-11";
   const match = /^(\d{4})-(\d{2})$/.exec(seed);
-  let year = match ? Number(match[1]) : 2026;
-  let month = match ? Number(match[2]) : 11;
+  const year = match ? Number(match[1]) : 2026;
+  const month = match ? Number(match[2]) : 11;
 
   for (let i = 0; i <= 6; i++) {
     const m = ((month - 1 + i) % 12) + 1;
@@ -73,6 +74,11 @@ function getAvailablePeriods(state, basePeriod) {
   return Array.from(set).sort();
 }
 
+function setGateMessage(msg) {
+  const gateStatus = document.getElementById("driveGateStatus");
+  if (gateStatus) gateStatus.textContent = msg;
+}
+
 function setDriveStatus(text, isOk) {
   const el = document.getElementById("driveStatusText");
   if (!el) return;
@@ -80,11 +86,30 @@ function setDriveStatus(text, isOk) {
   el.classList.toggle("connected", Boolean(isOk));
 }
 
-function updateDataVisibility() {
-  const lockedEl = document.getElementById("driveLockedScreen");
-  const unlockedEl = document.getElementById("driveUnlockedContent");
-  if (lockedEl) lockedEl.classList.toggle("hidden", driveConnected);
-  if (unlockedEl) unlockedEl.classList.toggle("hidden", !driveConnected);
+function applyStrictDriveLock() {
+  const gateEl = document.getElementById("driveGate");
+  const workspaceEl = document.getElementById("appWorkspace");
+
+  if (!driveConnected) {
+    if (gateEl) gateEl.classList.remove("hidden");
+    if (workspaceEl) workspaceEl.classList.add("hidden");
+
+    const expBody = document.getElementById("expenseTableBody");
+    const incBody = document.getElementById("incomeTableBody");
+    const noteBody = document.getElementById("notesTableBody");
+    const ccTotalEl = document.getElementById("ccMonthlyInstallmentTotal");
+    const periodSel = document.getElementById("periodSelect");
+
+    if (expBody) expBody.innerHTML = "";
+    if (incBody) incBody.innerHTML = "";
+    if (noteBody) noteBody.innerHTML = "";
+    if (ccTotalEl) ccTotalEl.textContent = "0,00 TL";
+    if (periodSel) periodSel.innerHTML = "";
+    return;
+  }
+
+  if (gateEl) gateEl.classList.add("hidden");
+  if (workspaceEl) workspaceEl.classList.remove("hidden");
 }
 
 function getCreditCardMonthlyTotal(period) {
@@ -96,11 +121,7 @@ function getCreditCardMonthlyTotal(period) {
 
 function renderPeriodSelect() {
   const selectEl = document.getElementById("periodSelect");
-  if (!selectEl) return;
-  if (!driveConnected) {
-    selectEl.innerHTML = "";
-    return;
-  }
+  if (!selectEl || !driveConnected) return;
 
   const periods = getAvailablePeriods(appState, appState.activePeriod);
   if (!appState.activePeriod || !periods.includes(appState.activePeriod)) {
@@ -118,16 +139,11 @@ function renderPeriodSelect() {
 }
 
 function renderExpensesAndIncomes() {
+  if (!driveConnected) return;
+
   const expBody = document.getElementById("expenseTableBody");
   const incBody = document.getElementById("incomeTableBody");
   const ccTotalEl = document.getElementById("ccMonthlyInstallmentTotal");
-
-  if (!driveConnected) {
-    if (expBody) expBody.innerHTML = "";
-    if (incBody) incBody.innerHTML = "";
-    if (ccTotalEl) ccTotalEl.textContent = "0,00 TL";
-    return;
-  }
 
   const period = appState.activePeriod || "2026-11";
   if (!appState.periods[period]) {
@@ -239,16 +255,16 @@ function renderExpensesAndIncomes() {
   }
 }
 
-let notesApi = null;
-
 function renderAll(triggerSync = false) {
-  updateDataVisibility();
+  applyStrictDriveLock();
+  if (!driveConnected) return;
+
   renderPeriodSelect();
   renderExpensesAndIncomes();
   if (notesApi) {
-    notesApi.renderNotes(appState.activePeriod, driveConnected);
+    notesApi.renderNotes(appState.activePeriod, true);
   }
-  if (triggerSync && driveConnected) {
+  if (triggerSync) {
     scheduleAutoDriveSync();
   }
 }
@@ -351,9 +367,15 @@ function scheduleAutoDriveSync() {
   }, 800);
 }
 
-function initGoogleDriveClient() {
-  if (!window.google || !window.google.accounts || !window.google.accounts.oauth2 || !DRIVE_CLIENT_ID) {
-    return;
+function ensureTokenClient() {
+  if (tokenClient) return true;
+  if (!DRIVE_CLIENT_ID || DRIVE_CLIENT_ID === "BURAYA_KENDI_CLIENT_ID_YAZIN") {
+    setGateMessage("Hata: app.js içinde DRIVE_CLIENT_ID tanımlanmamış.");
+    return false;
+  }
+  if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) {
+    setGateMessage("Google giriş servisi yükleniyor, lütfen 1-2 saniye bekleyip tekrar basın.");
+    return false;
   }
 
   tokenClient = window.google.accounts.oauth2.initTokenClient({
@@ -365,30 +387,37 @@ function initGoogleDriveClient() {
         driveConnected = true;
         appState = loadLocalState();
         setDriveStatus("Drive: Bağlandı", true);
-        await loadRemoteStateIfExists();
+        setGateMessage("Drive bağlantısı kuruldu, veriler yükleniyor...");
+        try {
+          await loadRemoteStateIfExists();
+        } catch {
+          // Uzak dosya yoksa yerel veri ile devam edilir
+        }
         renderAll(false);
       } else {
         driveConnected = false;
-        setDriveStatus("Drive: Bağlı değil (Veri gizli)", false);
+        driveAccessToken = null;
+        setGateMessage("Drive bağlantısı tamamlanmadı. Devam etmek için Drive Bağlan'a basın.");
         renderAll(false);
       }
     }
   });
+  return true;
 }
 
-function triggerDriveConnect(promptMode = "consent") {
-  if (!tokenClient) initGoogleDriveClient();
-  if (!tokenClient) {
-    setDriveStatus("Drive istemcisi hazır değil", false);
-    return;
+function handleConnectClick() {
+  if (!ensureTokenClient()) return;
+  try {
+    tokenClient.requestAccessToken({ prompt: "consent" });
+  } catch (err) {
+    setGateMessage(`Bağlantı penceresi açılamadı: ${err?.message || err}`);
   }
-  tokenClient.requestAccessToken({ prompt: promptMode });
 }
 
 document.addEventListener("DOMContentLoaded", () => {
   appState = loadLocalState();
   driveConnected = false;
-  setDriveStatus("Drive: Bağlı değil (Veri gizli)", false);
+  applyStrictDriveLock();
 
   notesApi = initNotesModule({
     getState: () => appState,
@@ -403,10 +432,11 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   notesApi.setDriveReadyGetter(() => driveConnected);
 
-  document.getElementById("driveConnectBtn")?.addEventListener("click", () => triggerDriveConnect("consent"));
+  document.getElementById("driveConnectBtn")?.addEventListener("click", handleConnectClick);
+
   document.getElementById("driveSyncNowBtn")?.addEventListener("click", () => {
     if (!driveConnected) {
-      triggerDriveConnect("consent");
+      handleConnectClick();
       return;
     }
     syncAllToDrive();
@@ -419,20 +449,9 @@ document.addEventListener("DOMContentLoaded", () => {
     renderAll(false);
   });
 
-  renderAll(false);
-
-  const tryAutoStartDrive = () => {
-    initGoogleDriveClient();
-    if (tokenClient) {
-      try {
-        tokenClient.requestAccessToken({ prompt: "" });
-      } catch {
-        // Tarayıcı açılır pencereyi engellerse kullanıcı butona basar
-      }
-    }
-  };
-
   window.addEventListener("load", () => {
-    setTimeout(tryAutoStartDrive, 250);
+    setTimeout(() => {
+      ensureTokenClient();
+    }, 300);
   });
 });
