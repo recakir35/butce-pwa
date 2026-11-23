@@ -1,86 +1,108 @@
-<div id="driveLockedScreen" class="locked-overlay">
-  <h3>Google Drive Bağlantısı Bekleniyor</h3>
-  <p>Drive bağlanılmadan hiçbir veri gösterilmez. Bağlantı tamamlandığında verileriniz açılır.</p>
-  <button id="driveConnectBtn" type="button" class="primary">Drive Bağlan</button>
-</div>
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="icon" href="data:," />
+  <title>Bütçe Takip</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  <div class="container">
+    <!-- Drive bağlı değilken SADECE bu ekran görünür -->
+    <div id="driveGate" class="card" style="text-align:center; padding:40px 20px;">
+      <h2>Google Drive Bağlantısı Gerekli</h2>
+      <p id="driveGateStatus">Drive bağlanılmadan hiçbir veri gösterilmez.</p>
+      <button id="driveConnectBtn" type="button" class="primary">Drive Bağlan</button>
+    </div>
 
-<div id="driveUnlockedContent" class="hidden">
-  <div class="card">
-    <label for="periodSelect"><strong>Dönem (Ay):</strong></label>
-    <select id="periodSelect"></select>
-    <span id="driveStatusText" class="drive-status">Drive: Bağlı değil</span>
-    <button id="driveSyncNowBtn" type="button" class="secondary">Şimdi Drive'a Yaz</button>
-  </div>
+    <!-- Drive bağlandıktan sonra açılan uygulama alanı -->
+    <div id="appWorkspace" class="hidden">
+      <div class="card">
+        <div class="toolbar">
+          <label for="periodSelect"><strong>Dönem (Ay):</strong></label>
+          <select id="periodSelect"></select>
+          <span id="driveStatusText" class="drive-status">Drive: Bağlandı</span>
+          <button id="driveSyncNowBtn" type="button" class="secondary">Şimdi Drive'a Yaz</button>
+        </div>
+      </div>
 
-  <div class="card">
-    <h3>Gider Kalemleri</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>Hesap Kalemi</th>
-          <th class="num">Tutar</th>
-          <th>Son Ödeme Tarihi</th>
-          <th>Açıklama</th>
-          <th>Durum</th>
-        </tr>
-      </thead>
-      <tbody id="expenseTableBody"></tbody>
-    </table>
-    <div class="cc-installment-box">
-      <span>Bu Ayki Kredi Kartı Taksit Toplamı:</span>
-      <span id="ccMonthlyInstallmentTotal">0,00 TL</span>
+      <div class="card">
+        <h3>Gider Kalemleri</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Hesap Kalemi</th>
+              <th class="num">Tutar</th>
+              <th>Son Ödeme Tarihi</th>
+              <th>Açıklama</th>
+              <th>Durum</th>
+            </tr>
+          </thead>
+          <tbody id="expenseTableBody"></tbody>
+        </table>
+        <div class="cc-installment-box">
+          <span>Bu Ayki Kredi Kartı Taksit Toplamı:</span>
+          <span id="ccMonthlyInstallmentTotal">0,00 TL</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Gelir Kalemleri</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Gelir Kalemi</th>
+              <th class="num">Tutar</th>
+              <th>Açıklama</th>
+            </tr>
+          </thead>
+          <tbody id="incomeTableBody"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3>Dönemsel Notlar &amp; Hatırlatmalar</h3>
+        <div class="toolbar">
+          <label for="notePeriodSelect"><strong>Dönem:</strong></label>
+          <select id="notePeriodSelect"></select>
+
+          <label for="noteGroupSelect"><strong>Grup:</strong></label>
+          <select id="noteGroupSelect"></select>
+          <input id="noteCustomGroupInput" type="text" placeholder="Yeni grup (opsiyonel)" />
+
+          <label for="noteRepeatSelect"><strong>Tekrar:</strong></label>
+          <select id="noteRepeatSelect">
+            <option value="Tek Seferlik">Tek Seferlik</option>
+            <option value="Haftalık">Haftalık</option>
+            <option value="Aylık">Aylık</option>
+            <option value="Yıllık">Yıllık</option>
+          </select>
+
+          <input id="noteRemindAtInput" type="datetime-local" />
+          <input id="noteTitleInput" type="text" placeholder="Hatırlatma / not metni..." />
+          <button id="addNoteBtn" type="button" class="primary">Hatırlatma Ekle</button>
+        </div>
+        <div id="noteSortInfo" style="font-size:12px;color:#475569;margin-bottom:6px;"></div>
+        <table>
+          <thead>
+            <tr>
+              <th>Grup</th>
+              <th>Tekrar</th>
+              <th>Dönem</th>
+              <th>Not / Hatırlatma</th>
+              <th>Tarih / Saat</th>
+              <th>İşlem</th>
+            </tr>
+          </thead>
+          <tbody id="notesTableBody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
-  <div class="card">
-    <h3>Gelir Kalemleri</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>Gelir Kalemi</th>
-          <th class="num">Tutar</th>
-          <th>Açıklama</th>
-        </tr>
-      </thead>
-      <tbody id="incomeTableBody"></tbody>
-    </table>
-  </div>
-
-  <div class="card">
-    <h3>Dönemsel Notlar & Hatırlatmalar</h3>
-    <div class="toolbar">
-      <label for="notePeriodSelect"><strong>Dönem:</strong></label>
-      <select id="notePeriodSelect"></select>
-
-      <label for="noteGroupSelect"><strong>Grup:</strong></label>
-      <select id="noteGroupSelect"></select>
-      <input id="noteCustomGroupInput" type="text" placeholder="Yeni grup (opsiyonel)" />
-
-      <label for="noteRepeatSelect"><strong>Tekrar:</strong></label>
-      <select id="noteRepeatSelect">
-        <option value="Tek Seferlik">Tek Seferlik</option>
-        <option value="Haftalık">Haftalık</option>
-        <option value="Aylık">Aylık</option>
-        <option value="Yıllık">Yıllık</option>
-      </select>
-
-      <input id="noteRemindAtInput" type="datetime-local" />
-      <input id="noteTitleInput" type="text" placeholder="Hatırlatma / not metni..." />
-      <button id="addNoteBtn" type="button" class="primary">Hatırlatma Ekle</button>
-    </div>
-    <div id="noteSortInfo" style="font-size:12px;color:#475569;margin-bottom:6px;"></div>
-    <table>
-      <thead>
-        <tr>
-          <th>Grup</th>
-          <th>Tekrar</th>
-          <th>Dönem</th>
-          <th>Not / Hatırlatma</th>
-          <th>Tarih / Saat</th>
-          <th>İşlem</th>
-        </tr>
-      </thead>
-      <tbody id="notesTableBody"></tbody>
-    </table>
-  </div>
-</div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
