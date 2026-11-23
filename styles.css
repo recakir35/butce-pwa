@@ -787,6 +787,24 @@ table.excel-table tbody tr.child-row {
   background: #ffffff;
 }
 
+table.excel-table tbody tr.unpaid-expense-row {
+  background: #fef2f2;
+}
+
+table.excel-table tbody tr.unpaid-expense-row td {
+  color: #991b1b;
+}
+
+table.excel-table tbody tr.unpaid-expense-row .cell-input {
+  background: #ffffff;
+  border-color: #fca5a5;
+  color: #7f1d1d;
+}
+
+table.excel-table tbody tr.unpaid-expense-row .paid-box {
+  color: #b91c1c;
+}
+
 .child-indent {
   padding-left: 20px;
   color: #334155;
