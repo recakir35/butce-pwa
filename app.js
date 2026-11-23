@@ -3,7 +3,7 @@ import { initNotesModule, formatMoneyTR } from "./notes.js";
 const STORAGE_KEY = "butce_takip_state_v1";
 const DRIVE_FILE_NAME = "hesap_kalemleri.json";
 const DRIVE_FOLDER_NAME = "ButceArsiv";
-const DRIVE_CLIENT_ID = window.GOOGLE_DRIVE_CLIENT_ID || "BURAYA_KENDI_CLIENT_ID_YAZIN";
+const DRIVE_CLIENT_ID = "247986753605-ntjp9tt0vshhsobo3kk2fd3dkqud7puv.apps.googleusercontent.com";
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 
 let driveAccessToken = null;
@@ -369,48 +369,59 @@ function scheduleAutoDriveSync() {
 
 function ensureTokenClient() {
   if (tokenClient) return true;
-  if (!DRIVE_CLIENT_ID || DRIVE_CLIENT_ID === "BURAYA_KENDI_CLIENT_ID_YAZIN") {
-    setGateMessage("Hata: app.js içinde DRIVE_CLIENT_ID tanımlanmamış.");
-    return false;
-  }
+
   if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) {
-    setGateMessage("Google giriş servisi yükleniyor, lütfen 1-2 saniye bekleyip tekrar basın.");
+    setGateMessage("Google giriş servisi henüz yüklenmedi (engellenmiş veya yavaş olabilir). 1-2 sn sonra tekrar basın.");
     return false;
   }
 
-  tokenClient = window.google.accounts.oauth2.initTokenClient({
-    client_id: DRIVE_CLIENT_ID,
-    scope: DRIVE_SCOPE,
-    callback: async (resp) => {
-      if (resp && resp.access_token) {
-        driveAccessToken = resp.access_token;
-        driveConnected = true;
-        appState = loadLocalState();
-        setDriveStatus("Drive: Bağlandı", true);
-        setGateMessage("Drive bağlantısı kuruldu, veriler yükleniyor...");
-        try {
-          await loadRemoteStateIfExists();
-        } catch {
-          // Uzak dosya yoksa yerel veri ile devam edilir
+  try {
+    tokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: DRIVE_CLIENT_ID,
+      scope: DRIVE_SCOPE,
+      callback: async (resp) => {
+        if (resp && resp.error) {
+          driveConnected = false;
+          driveAccessToken = null;
+          setGateMessage(`Google OAuth Hatası: ${resp.error} (${resp.error_description || ""})`);
+          renderAll(false);
+          return;
         }
-        renderAll(false);
-      } else {
-        driveConnected = false;
-        driveAccessToken = null;
-        setGateMessage("Drive bağlantısı tamamlanmadı. Devam etmek için Drive Bağlan'a basın.");
-        renderAll(false);
+
+        if (resp && resp.access_token) {
+          driveAccessToken = resp.access_token;
+          driveConnected = true;
+          appState = loadLocalState();
+          setDriveStatus("Drive: Bağlandı", true);
+          setGateMessage("Drive bağlantısı kuruldu, veriler yükleniyor...");
+          try {
+            await loadRemoteStateIfExists();
+          } catch (err) {
+            setGateMessage(`Drive okuma uyarısı: ${err?.message || err}`);
+          }
+          renderAll(false);
+        } else {
+          driveConnected = false;
+          driveAccessToken = null;
+          setGateMessage("Drive bağlantısı tamamlanmadı. Devam etmek için Drive Bağlan'a basın.");
+          renderAll(false);
+        }
       }
-    }
-  });
-  return true;
+    });
+    return true;
+  } catch (err) {
+    setGateMessage(`İstemci başlatma hatası: ${err?.message || err}`);
+    return false;
+  }
 }
 
 function handleConnectClick() {
+  setGateMessage("Google Drive bağlantısı başlatılıyor...");
   if (!ensureTokenClient()) return;
   try {
     tokenClient.requestAccessToken({ prompt: "consent" });
   } catch (err) {
-    setGateMessage("Hata: " + (err && err.message ? err.message : String(err)));
+    setGateMessage(`Bağlantı penceresi açılamadı: ${err?.message || err}`);
   }
 }
 
