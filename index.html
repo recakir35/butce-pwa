@@ -11,136 +11,129 @@
 </head>
 <body>
   <div class="container">
-    <!-- Drive bağlı değilken SADECE bu ekran görünür -->
-    <div id="driveGate" class="card" style="text-align:center; padding:40px 20px;">
-      <h2>Google Drive Bağlantısı Gerekli</h2>
-      <p id="driveGateStatus">Drive bağlanılmadan hiçbir veri gösterilmez.</p>
-      <button id="driveConnectBtn" type="button" class="primary">Drive Bağlan</button>
+    <div class="card">
+      <div class="toolbar">
+        <label for="periodSelect"><strong>Dönem (Ay):</strong></label>
+        <select id="periodSelect"></select>
+        <button id="addPeriodBtn" type="button" class="primary">+ Yeni Ay</button>
+        <button id="deletePeriodBtn" type="button" class="danger">Dönem Sil</button>
+
+        <button id="driveConnectBtn" type="button" class="secondary">Drive Bağlan</button>
+        <button id="driveSyncNowBtn" type="button" class="secondary">Şimdi Drive'a Yaz</button>
+        <button id="driveReloadBtn" type="button" class="secondary">Drive'dan Yenile</button>
+        <span id="driveStatusText" class="drive-status">Drive: Hazır</span>
+
+        <button id="toggleReportBtn" type="button" class="secondary">Raporlama</button>
+        <button id="toggleNotifyBtn" type="button" class="primary">Bildirimler Açık</button>
+      </div>
     </div>
 
-    <!-- Drive bağlandıktan sonra açılan tam çalışma alanı -->
-    <div id="appWorkspace" class="hidden">
-      <div class="card">
-        <div class="toolbar">
-          <label for="periodSelect"><strong>Dönem (Ay):</strong></label>
-          <select id="periodSelect"></select>
-          <button id="addPeriodBtn" type="button" class="primary">+ Yeni Ay</button>
-          <button id="deletePeriodBtn" type="button" class="danger">Dönem Sil</button>
-          <span id="driveStatusText" class="drive-status">Drive: Bağlandı</span>
-          <button id="driveSyncNowBtn" type="button" class="secondary">Şimdi Drive'a Yaz</button>
-          <button id="driveReloadBtn" type="button" class="secondary">Drive'dan Yenile</button>
-          <button id="toggleReportBtn" type="button" class="secondary">Raporlama</button>
-          <button id="toggleNotifyBtn" type="button" class="primary">Bildirimler Açık</button>
-        </div>
+    <div id="reportSection" class="card hidden">
+      <h3>Raporlama Özeti</h3>
+      <div id="reportSummaryContent"></div>
+    </div>
+
+    <div class="card">
+      <div class="toolbar">
+        <h3 style="margin:0; margin-right:auto;">Gider Kalemleri</h3>
+        <button id="openAddExpenseBtn" type="button" class="primary">+ Gider Ekle</button>
       </div>
-
-      <div id="reportSection" class="card hidden">
-        <h3>Raporlama Özeti</h3>
-        <div id="reportSummaryContent"></div>
+      <table>
+        <thead>
+          <tr>
+            <th>Hesap Kalemi</th>
+            <th class="num">Tutar</th>
+            <th>Son Ödeme Tarihi</th>
+            <th>Açıklama</th>
+            <th>Durum</th>
+            <th>İşlem</th>
+          </tr>
+        </thead>
+        <tbody id="expenseTableBody"></tbody>
+      </table>
+      <div class="cc-installment-box">
+        <span>Bu Ayki Kredi Kartı Taksit Toplamı:</span>
+        <span id="ccMonthlyInstallmentTotal">0,00 TL</span>
       </div>
+    </div>
 
-      <div class="card">
-        <div class="toolbar">
-          <h3 style="margin:0; margin-right:auto;">Gider Kalemleri</h3>
-          <button id="openAddExpenseBtn" type="button" class="primary">+ Gider Ekle</button>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Hesap Kalemi</th>
-              <th class="num">Tutar</th>
-              <th>Son Ödeme Tarihi</th>
-              <th>Açıklama</th>
-              <th>Durum</th>
-              <th>İşlem</th>
-            </tr>
-          </thead>
-          <tbody id="expenseTableBody"></tbody>
-        </table>
-        <div class="cc-installment-box">
-          <span>Bu Ayki Kredi Kartı Taksit Toplamı:</span>
-          <span id="ccMonthlyInstallmentTotal">0,00 TL</span>
-        </div>
+    <div class="card">
+      <div class="toolbar">
+        <h3 style="margin:0; margin-right:auto;">Kredi Kartları &amp; Taksitler</h3>
+        <button id="openAddCcBtn" type="button" class="primary">+ Kredi Kartı Taksiti Ekle</button>
       </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Kart / Açıklama</th>
+            <th>Dönem</th>
+            <th class="num">Aylık Taksit</th>
+            <th>Durum</th>
+            <th>İşlem</th>
+          </tr>
+        </thead>
+        <tbody id="ccTableBody"></tbody>
+      </table>
+    </div>
 
-      <div class="card">
-        <div class="toolbar">
-          <h3 style="margin:0; margin-right:auto;">Kredi Kartları &amp; Taksitler</h3>
-          <button id="openAddCcBtn" type="button" class="primary">+ Kredi Kartı Taksiti Ekle</button>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Kart / Açıklama</th>
-              <th>Dönem</th>
-              <th class="num">Aylık Taksit</th>
-              <th>Durum</th>
-              <th>İşlem</th>
-            </tr>
-          </thead>
-          <tbody id="ccTableBody"></tbody>
-        </table>
+    <div class="card">
+      <div class="toolbar">
+        <h3 style="margin:0; margin-right:auto;">Gelir Kalemleri</h3>
+        <button id="openAddIncomeBtn" type="button" class="success">+ Gelir Ekle</button>
       </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Gelir Kalemi</th>
+            <th class="num">Tutar</th>
+            <th>Açıklama</th>
+            <th>İşlem</th>
+          </tr>
+        </thead>
+        <tbody id="incomeTableBody"></tbody>
+      </table>
+    </div>
 
-      <div class="card">
-        <div class="toolbar">
-          <h3 style="margin:0; margin-right:auto;">Gelir Kalemleri</h3>
-          <button id="openAddIncomeBtn" type="button" class="success">+ Gelir Ekle</button>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Gelir Kalemi</th>
-              <th class="num">Tutar</th>
-              <th>Açıklama</th>
-              <th>İşlem</th>
-            </tr>
-          </thead>
-          <tbody id="incomeTableBody"></tbody>
-        </table>
+    <div class="card">
+      <h3>Dönemsel Notlar &amp; Hatırlatmalar</h3>
+      <div class="toolbar">
+        <label for="notePeriodSelect"><strong>Dönem:</strong></label>
+        <select id="notePeriodSelect"></select>
+
+        <label for="noteGroupSelect"><strong>Grup:</strong></label>
+        <select id="noteGroupSelect"></select>
+        <input id="noteCustomGroupInput" type="text" placeholder="Yeni grup (opsiyonel)" />
+
+        <label for="noteRepeatSelect"><strong>Tekrar:</strong></label>
+        <select id="noteRepeatSelect">
+          <option value="Tek Seferlik">Tek Seferlik</option>
+          <option value="Haftalık">Haftalık</option>
+          <option value="Aylık">Aylık</option>
+          <option value="Yıllık">Yıllık</option>
+        </select>
+
+        <input id="noteRemindAtInput" type="datetime-local" />
+        <input id="noteTitleInput" type="text" placeholder="Hatırlatma / not metni..." />
+        <button id="addNoteBtn" type="button" class="primary">Hatırlatma Ekle</button>
       </div>
-
-      <div class="card">
-        <h3>Dönemsel Notlar &amp; Hatırlatmalar</h3>
-        <div class="toolbar">
-          <label for="notePeriodSelect"><strong>Dönem:</strong></label>
-          <select id="notePeriodSelect"></select>
-
-          <label for="noteGroupSelect"><strong>Grup:</strong></label>
-          <select id="noteGroupSelect"></select>
-          <input id="noteCustomGroupInput" type="text" placeholder="Yeni grup (opsiyonel)" />
-
-          <label for="noteRepeatSelect"><strong>Tekrar:</strong></label>
-          <select id="noteRepeatSelect">
-            <option value="Tek Seferlik">Tek Seferlik</option>
-            <option value="Haftalık">Haftalık</option>
-            <option value="Aylık">Aylık</option>
-            <option value="Yıllık">Yıllık</option>
-          </select>
-
-          <input id="noteRemindAtInput" type="datetime-local" />
-          <input id="noteTitleInput" type="text" placeholder="Hatırlatma / not metni..." />
-          <button id="addNoteBtn" type="button" class="primary">Hatırlatma Ekle</button>
-        </div>
-        <div id="noteSortInfo" style="font-size:12px;color:#475569;margin-bottom:6px;"></div>
-        <table>
-          <thead>
-            <tr>
-              <th>Grup</th>
-              <th>Tekrar</th>
-              <th>Dönem</th>
-              <th>Not / Hatırlatma</th>
-              <th>Tarih / Saat</th>
-              <th>İşlem</th>
-            </tr>
-          </thead>
-          <tbody id="notesTableBody"></tbody>
-        </table>
-      </div>
+      <div id="noteSortInfo" style="font-size:12px;color:#475569;margin-bottom:6px;"></div>
+      <table>
+        <thead>
+          <tr>
+            <th>Grup</th>
+            <th>Tekrar</th>
+            <th>Dönem</th>
+            <th>Not / Hatırlatma</th>
+            <th>Tarih / Saat</th>
+            <th>İşlem</th>
+          </tr>
+        </thead>
+        <tbody id="notesTableBody"></tbody>
+      </table>
     </div>
   </div>
 
-  <!-- Gider Ekleme / Düzenleme Modalı -->
+  <!-- Gider Modalı -->
   <div id="expenseModal" class="modal-backdrop">
     <div class="modal-box">
       <h3 id="expenseModalTitle">Gider Kalemi</h3>
@@ -169,7 +162,7 @@
     </div>
   </div>
 
-  <!-- Gelir Ekleme / Düzenleme Modalı -->
+  <!-- Gelir Modalı -->
   <div id="incomeModal" class="modal-backdrop">
     <div class="modal-box">
       <h3 id="incomeModalTitle">Gelir Kalemi</h3>
@@ -194,7 +187,7 @@
     </div>
   </div>
 
-  <!-- Kredi Kartı Taksiti Modalı -->
+  <!-- Kredi Kartı Modalı -->
   <div id="ccModal" class="modal-backdrop">
     <div class="modal-box">
       <h3 id="ccModalTitle">Kredi Kartı Taksiti</h3>
