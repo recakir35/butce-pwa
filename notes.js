@@ -10,6 +10,14 @@ const DEFAULT_NOTE_GROUPS = [
   "Aile"
 ];
 
+const REPEAT_SORT_ORDER = {
+  daily: 1,
+  weekly: 2,
+  monthly: 3,
+  yearly: 4,
+  none: 5
+};
+
 let notesList = []; // [ { id, text, group, period, dueDate, reminderAt, repeat, done, createdLabel } ]
 let noteGroupsList = [...DEFAULT_NOTE_GROUPS];
 let firedRemindersMap = {}; // { [noteId]: fireKey }
@@ -33,6 +41,21 @@ function repeatLabel(repeat) {
   if (repeat === "monthly") return "Aylık";
   if (repeat === "yearly") return "Yıllık";
   return "Tek Seferlik";
+}
+
+function compareNotesByRepeatAndGroup(a, b) {
+  const repA = REPEAT_SORT_ORDER[a.repeat || "none"] ?? 99;
+  const repB = REPEAT_SORT_ORDER[b.repeat || "none"] ?? 99;
+  if (repA !== repB) return repA - repB;
+
+  const grpA = String(a.group || "Genel");
+  const grpB = String(b.group || "Genel");
+  const grpCmp = grpA.localeCompare(grpB, "tr", { sensitivity: "base" });
+  if (grpCmp !== 0) return grpCmp;
+
+  const remA = a.reminderAt || a.dueDate || "9999-99-99";
+  const remB = b.reminderAt || b.dueDate || "9999-99-99";
+  return remA.localeCompare(remB);
 }
 
 function formatDateTimeTr(dtStr) {
@@ -74,6 +97,23 @@ function computeNextReminderValue(currentReminderStr, repeat) {
     return "";
   }
   return toLocalDatetimeInputValue(next);
+}
+
+function getCurrentOrActiveMonth() {
+  const activePeriod = getActivePeriodFn();
+  if (activePeriod && /^\d{4}-(0[1-9]|1[0-2])$/.test(activePeriod)) {
+    return activePeriod;
+  }
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function addMonthsToYM(ym, offsetMonths) {
+  const [y, m] = ym.split("-").map(Number);
+  const totalIdx = y * 12 + (m - 1) + offsetMonths;
+  const ny = Math.floor(totalIdx / 12);
+  const nm = (totalIdx % 12) + 1;
+  return `${ny}-${String(nm).padStart(2, "0")}`;
 }
 
 function saveNotesLocal() {
@@ -172,8 +212,19 @@ export function syncNotePeriodOptions() {
   if (!periodSelectEl) return;
 
   const activePeriod = getActivePeriodFn();
+  const basePeriod = getCurrentOrActiveMonth();
+  const futurePeriods = [];
+  for (let i = 1; i <= 24; i++) {
+    futurePeriods.push(addMonthsToYM(basePeriod, i));
+  }
+
   const periods = Array.from(
-    new Set([...(getRegisteredPeriodsFn() || []), ...(activePeriod ? [activePeriod] : [])])
+    new Set([
+      ...(getRegisteredPeriodsFn() || []),
+      ...(activePeriod ? [activePeriod] : []),
+      ...futurePeriods,
+      ...notesList.map((n) => n.period).filter(Boolean)
+    ])
   ).sort();
 
   const prevVal = periodSelectEl.value;
@@ -203,9 +254,11 @@ export function renderPeriodNotesTable() {
     badgeEl.textContent = activePeriod || "Genel";
   }
 
-  const filtered = activePeriod
-    ? notesList.filter((n) => !n.period || n.period === activePeriod)
-    : notesList;
+  const filtered = (
+    activePeriod
+      ? notesList.filter((n) => !n.period || n.period === activePeriod)
+      : [...notesList]
+  ).sort(compareNotesByRepeatAndGroup);
 
   if (!filtered.length) {
     if (frameEl) frameEl.classList.add("empty");
@@ -225,6 +278,7 @@ export function renderPeriodNotesTable() {
       const periodBadge = n.period
         ? `<span class="badge">${escapeNoteHtml(n.period)}</span>`
         : `<span class="badge">Genel</span>`;
+      const repBadge = `<span class="badge">${escapeNoteHtml(repeatLabel(n.repeat))}</span>`;
       const textClass = n.done ? "note-done-text" : "";
 
       return `
@@ -233,6 +287,7 @@ export function renderPeriodNotesTable() {
             <span class="${textClass}">${escapeNoteHtml(n.text)}</span>
             ${groupBadge}
             ${periodBadge}
+            ${repBadge}
           </td>
           <td>${escapeNoteHtml(n.dueDate || "-")}</td>
           <td>
@@ -258,12 +313,16 @@ export function renderNotesPanel() {
 
   const activePeriod = getActivePeriodFn();
   if (periodLabelEl) {
-    periodLabelEl.textContent = activePeriod ? `Dönem: ${activePeriod}` : "Tüm Dönemler";
+    periodLabelEl.textContent = activePeriod
+      ? `Dönem: ${activePeriod} (ve İleri Dönemler)`
+      : "Tüm Dönemler";
   }
 
-  const filtered = activePeriod
-    ? notesList.filter((n) => !n.period || n.period === activePeriod)
-    : notesList;
+  const filtered = (
+    activePeriod
+      ? notesList.filter((n) => !n.period || n.period >= activePeriod)
+      : [...notesList]
+  ).sort(compareNotesByRepeatAndGroup);
 
   if (!filtered.length) {
     listEl.innerHTML = `<div class="item-meta">Bu dönem için kayıtlı not bulunmuyor.</div>`;
