@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#1d4ed8" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Bütçe Takip" />
+  <title>Bütçe & Not Takip</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  
+  <div class="container">
+    <!-- 1. En Üst: Yönetim Butonları -->
+    <div class="top-actions" role="tablist" aria-label="Yönetim Menüsü">
+      <button type="button" class="top-btn" data-panel="panel-hesap">Hesap Kalemi</button>
+      <button type="button" class="top-btn" data-panel="panel-kartlar">Kredi Kartları</button>
+      <button type="button" class="top-btn" data-panel="panel-notlar">Notlar</button>
+      <button type="button" id="btnOpenReports" class="top-btn">Raporlama</button>
+      <button type="button" id="btnInstallApp" class="top-btn" style="display: none;">Uygulamayı Kur</button>
+      <button type="button" id="btnEnableNotify" class="top-btn">Bildirim İzni</button>
+    </div>
+
+    <!-- Tam Ekran Raporlama Görünümü (Varsayılan Kapalı / Boş) -->
+    <section id="reportsView" class="reports-view" aria-label="Raporlama Ekranı">
+      <div class="reports-topbar">
+        <div>
+          <h1 class="reports-main-title">Raporlama Merkezi</h1>
+          <div class="reports-sub">İstediğiniz raporu seçip oluşturun — rapor ayarları ve görünümleri kaydedilmez.</div>
+        </div>
+        <div class="reports-topbar-actions">
+          <button type="button" id="btnClearReport" class="secondary-btn">Raporu Temizle</button>
+          <button type="button" id="btnBackToBudget" class="primary-btn">Ana Ekrana Dön</button>
+        </div>
+      </div>
+
+      <div class="reports-controls">
+        <div class="report-field">
+          <label for="reportTypeSelect">Rapor Türü</label>
+          <select id="reportTypeSelect">
+            <option value="month_compare">Ay - Ay Karşılaştırma (Gelir / Gider / Net)</option>
+            <option value="year_compare">Yıl - Yıl Karşılaştırma</option>
+            <option value="category_breakdown">Kalem Bazlı Dağılım (Gider / Gelir)</option>
+            <option value="payment_status">Ödeme Durumu (Ödenen vs Kalan)</option>
+            <option value="cc_installments">Kredi Kartı & Taksit Projeksiyonu</option>
+            <option value="notes_summary">Notlar & Hatırlatma Durumu</option>
+          </select>
+        </div>
+
+        <div class="report-field">
+          <label for="reportPeriodFrom">Başlangıç Dönemi</label>
+          <select id="reportPeriodFrom"></select>
+        </div>
+
+        <div class="report-field">
+          <label for="reportPeriodTo">Bitiş Dönemi</label>
+          <select id="reportPeriodTo"></select>
+        </div>
+
+        <div class="report-field">
+          <label for="reportFlowFilter">Akış Filtresi</label>
+          <select id="reportFlowFilter">
+            <option value="all">Tümü (Gelir + Gider)</option>
+            <option value="expense">Sadece Gider</option>
+            <option value="income">Sadece Gelir</option>
+          </select>
+        </div>
+
+        <div class="report-actions">
+          <button type="button" id="btnGenerateReport" class="primary-btn">Rapor Oluştur</button>
+        </div>
+      </div>
+
+      <!-- Başlangıçta tamamen boş durur; sadece kullanıcı Rapor Oluştur dediğinde dolar -->
+      <div id="reportOutputCanvas" class="report-canvas"></div>
+    </section>
+
+    <!-- Ana Bütçe Çalışma Alanı -->
+    <div id="budgetWorkspace">
+      <!-- Açılır Kart / Form Alanları -->
+      <section id="panel-hesap" class="drawer-card" aria-label="Hesap Kalemi">
+        <div class="drawer-header">
+          <h2 id="kalemDrawerTitle" class="drawer-title">Hesap Kalemi Ekle / Yönet</h2>
+          <button type="button" class="close-btn" data-close>Kapat</button>
+        </div>
+
+        <form id="kalemForm" class="kalem-form">
+          <select id="kalemFlow" required>
+            <option value="both">Hem Gider Hem Gelir</option>
+            <option value="expense">Gider Kalemi</option>
+            <option value="income">Gelir Kalemi</option>
+          </select>
+
+          <input type="text" id="kalemName" placeholder="Kalem adı (ör. Telefonlar, Kira)" required />
+
+          <input type="number" id="kalemAmount" step="0.01" min="0" placeholder="Sabit/Varsayılan Tutar (opsiyonel)" />
+
+          <select id="kalemMode" required>
+            <option value="fixed">Sabit (Her Ay)</option>
+            <option value="installment">Taksitli (Ay Sayısı)</option>
+            <option value="yearly">Yıllık (Her Yıl Bu Ay)</option>
+            <option value="scheduled">İleri / Belirli Dönem</option>
+            <option value="this_month">Sadece Seçili Ay</option>
+          </select>
+
+          <input type="number" id="kalemInstallments" min="1" max="120" placeholder="Taksit sayısı (ör. 6)" style="display: none;" />
+
+          <input type="month" id="kalemTargetPeriod" title="Başlangıç veya Hedef Dönem (Ay)" />
+
+          <button type="submit" id="btnSaveKalem">Kalemi Ekle</button>
+          <button type="button" id="btnCancelKalemEdit" class="secondary-btn" style="display: none;">İptal</button>
+        </form>
+
+        <!-- Alt Kalemler ve Her Ay Sabit Çıkacak Tutarları -->
+        <div class="draft-sub-box">
+          <div class="draft-sub-header">
+            <span>Alt Kalemler & Her Ay Sabit Tutarları (İsteğe Bağlı — Örn. Oğlumun Telefonu, Kızımın Telefonu)</span>
+            <button type="button" id="btnAddDraftSub" class="small-btn">+ Alt Kalem Satırı</button>
+          </div>
+          <div id="draftSubList" class="draft-sub-list"></div>
+        </div>
+
+        <div id="kalemMasterList" class="kalem-list"></div>
+      </section>
+
+      <section id="panel-kartlar" class="drawer-card" aria-label="Kredi Kartları">
+        <div class="drawer-header">
+          <h2 class="drawer-title">Kredi Kartları, Taksit Dağıtımı & Gelecek Ay Planı</h2>
+          <button type="button" class="close-btn" data-close>Kapat</button>
+        </div>
+
+        <!-- Üst Satır: Banka / Kart Tanımlama, Seçim ve Bağlı Hesap Kalemi -->
+        <div class="cc-top-row">
+          <input type="text" id="newCardBankInput" placeholder="Banka adı (ör. Garanti, Yapı Kredi)" />
+          <button type="button" id="btnAddCard" class="primary">+ Kart / Banka Ekle</button>
+
+          <label for="ccSelect">Kart:</label>
+          <select id="ccSelect"></select>
+
+          <label for="ccTargetKalemSelect"><strong>Bağlı Hesap Kalemi:</strong></label>
+          <select id="ccTargetKalemSelect"></select>
+
+          <button type="button" id="btnDeleteCard" class="del-btn">Kartı Sil</button>
+        </div>
+
+        <!-- O Ay Kartta Yazan Giderleri (Ana Tutar + Taksit Sayısı) Tek Tek Listeleme -->
+        <form id="ccExpenseForm" class="cc-expense-form">
+          <input type="text" id="ccExpDesc" placeholder="Karttaki gider açıklaması (ör. Beyaz Eşya, Market)" required />
+          <input type="number" id="ccExpAmount" step="0.01" min="0" placeholder="Ana Tutar (TL)" required />
+          <input type="number" id="ccExpInstallments" min="1" max="120" value="1" placeholder="Taksit (1=Tek)" required />
+          <input type="date" id="ccExpDate" />
+          <button type="submit">Listeye Ekle</button>
+        </form>
+
+        <div class="sheet-frame" style="min-height: auto;">
+          <table class="excel-table">
+            <thead>
+              <tr>
+                <th>Başlangıç / Tarih</th>
+                <th>Karttaki Gider</th>
+                <th>Ana Tutar</th>
+                <th>Taksit Durumu</th>
+                <th>Bu Ay Taksiti</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="ccExpenseTableBody"></tbody>
+          </table>
+        </div>
+
+        <div class="cc-summary-bar">
+          <span id="ccPeriodTotalLabel">Seçili Ay Kart Toplamı: 0,00 TL</span>
+          <span id="ccLinkedStatusLabel">Hesap Kalemi: Bağlı değil</span>
+        </div>
+
+        <div class="cc-future-box">
+          <strong>Gelecek Dönem Taksit Projeksiyonu (Bu Kart İçin):</strong>
+          <div id="ccFutureInstallmentsList" class="cc-future-list"></div>
+        </div>
+      </section>
+
+      <section id="panel-notlar" class="drawer-card" aria-label="Notlar">
+        <div class="drawer-header">
+          <h2 class="drawer-title">Notlar <span id="notesActivePeriodLabel" class="badge"></span></h2>
+          <button type="button" class="close-btn" data-close>Kapat</button>
+        </div>
+
+        <form id="noteForm" class="note-form">
+          <input
+            type="text"
+            id="noteTextInput"
+            placeholder="Not (ör. Aidat artışını kontrol et, vergi taksitini öde)..."
+            required
+          />
+
+          <input
+            type="text"
+            id="noteGroupInput"
+            list="noteGroupList"
+            placeholder="Not Grubu (seçin veya yazın)"
+          />
+          <datalist id="noteGroupList"></datalist>
+
+          <select id="notePeriodSelect" title="Dönem">
+            <option value="">Genel (Dönemsiz)</option>
+          </select>
+
+          <input
+            type="date"
+            id="noteDueDateInput"
+            title="Son Tarih"
+          />
+
+          <input
+            type="datetime-local"
+            id="noteReminderAtInput"
+            title="Hatırlatma Zamanı"
+          />
+
+          <select id="noteRepeatSelect" title="Hatırlatma Tekrarı">
+            <option value="none">Tekrar: Yok</option>
+            <option value="daily">Tekrar: Günlük</option>
+            <option value="weekly">Tekrar: Haftalık</option>
+            <option value="monthly">Tekrar: Aylık</option>
+            <option value="yearly">Tekrar: Yıllık</option>
+          </select>
+
+          <button type="submit">Not Ekle</button>
+        </form>
+
+        <div id="notesList" class="note-list"></div>
+      </section>
+
+      <!-- 2. Seçili Dönem (Ay) Bilgisi — Sadece Kayıtlı Aylar + Yeni Ay & Dönem Sil -->
+      <div class="period-bar">
+        <div class="period-control">
+          <label for="periodMonth">Dönem (Ay):</label>
+          <select id="periodMonth"></select>
+          <button type="button" id="btnNewMonth" class="period-new-btn">+ Yeni Ay</button>
+          <button type="button" id="btnDeleteMonth" class="period-del-btn">Dönem Sil</button>
+        </div>
+        <div class="drive-mini">
+          <span id="driveStatus">Drive: Bağlı değil</span>
+          <button type="button" id="btnDriveConnect" class="drive-btn">Drive Bağlan</button>
+          <button type="button" id="btnDriveSync" class="drive-btn">Şimdi Drive'a Yaz</button>
+        </div>
+      </div>
+
+      <!-- 3. Ana Ekran: Sol Gider Tablosu, Sağ Gelir Tablosu ve Altında Dönemsel Notlar -->
+      <main class="main-grid">
+        <section class="panel" aria-label="Gider Kalemleri">
+          <h2 class="panel-title">Gider Kalemleri</h2>
+          <div id="expenseSheetFrame" class="sheet-frame">
+            <table class="excel-table">
+              <thead>
+                <tr>
+                  <th>Hesap Kalemi</th>
+                  <th>Tutar</th>
+                  <th>Son Ödeme Tarihi</th>
+                  <th>Açıklama</th>
+                  <th>Ödendi</th>
+                </tr>
+              </thead>
+              <tbody id="expenseTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <div>
+          <section class="panel" aria-label="Gelir Kalemleri">
+            <h2 class="panel-title">Gelir Kalemleri</h2>
+            <div id="incomeSheetFrame" class="sheet-frame">
+              <table class="excel-table">
+                <thead>
+                  <tr>
+                    <th>Gelir Kalemi</th>
+                    <th>Tutar</th>
+                    <th>Açıklama</th>
+                  </tr>
+                </thead>
+                <tbody id="incomeTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel panel-spaced" aria-label="Dönemsel Notlar">
+            <h2 class="panel-title">Dönemsel Notlar <span id="periodNotesTitleBadge" class="badge"></span></h2>
+            <div id="periodNotesSheetFrame" class="sheet-frame sheet-frame-compact">
+              <table class="excel-table">
+                <thead>
+                  <tr>
+                    <th>Not</th>
+                    <th>Son Tarih</th>
+                    <th>Yapıldı</th>
+                  </tr>
+                </thead>
+                <tbody id="periodNotesTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
