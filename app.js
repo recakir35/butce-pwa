@@ -671,16 +671,13 @@ function renderMasterList() {
         item.mode === "yearly" || item.mode === "scheduled" || item.mode === "this_month"
           ? ` (${item.startPeriod})`
           : "";
-
       const hasAmt =
         item.defaultAmount !== null &&
         item.defaultAmount !== undefined &&
         String(item.defaultAmount).trim() !== "";
-
       const amtText = hasAmt ? formatTL(item.defaultAmount) : "Aylık girilecek";
 
-      const subList = Array.isArray(item.subItems) ? item.subItems : [];
-      const subRowsHtml = subList
+      const subRowsHtml = (item.subItems || [])
         .map((s) => {
           const hasSubAmt =
             s.fixedAmount !== null &&
@@ -689,24 +686,24 @@ function renderMasterList() {
           const subAmtText = hasSubAmt ? formatTL(s.fixedAmount) : "Aylık girilecek";
 
           return `
-            <tr class="sub-item-row">
-              <td style="padding-left: 28px;">↳ ${escapeHtml(s.name || "(İsimsiz Alt Kalem)")}</td>
+            <tr class="child-row">
+              <td><span class="child-indent">↳ ${escapeHtml(s.name || "(İsimsiz Alt Kalem)")}</span></td>
               <td><span class="badge">Alt Kalem</span></td>
               <td>Sabit / Aylık</td>
-              <td style="text-align: right;">${escapeHtml(subAmtText)}</td>
-              <td style="text-align: right;"></td>
+              <td style="text-align:right;">${escapeHtml(subAmtText)}</td>
+              <td style="text-align:right;"></td>
             </tr>
           `;
         })
         .join("");
 
       return `
-        <tr>
+        <tr class="parent-row">
           <td><strong>${escapeHtml(item.name)}</strong></td>
           <td>${escapeHtml(flowLabel(item.flow))}</td>
           <td>${escapeHtml(modeLabel(item.mode, item) + extraInfo)}</td>
-          <td style="text-align: right;"><strong>${escapeHtml(amtText)}</strong></td>
-          <td style="text-align: right; white-space: nowrap;">
+          <td style="text-align:right;"><strong>${escapeHtml(amtText)}</strong></td>
+          <td style="text-align:right; white-space:nowrap;">
             <button type="button" class="edit-btn" data-edit-kalem-id="${item.id}">Düzenle</button>
             <button type="button" class="del-btn" data-delete-kalem-id="${item.id}">Sil</button>
           </td>
@@ -717,14 +714,14 @@ function renderMasterList() {
     .join("");
 
   kalemMasterList.innerHTML = `
-    <div class="sheet-frame" style="min-height: auto; margin-top: 12px;">
+    <div class="sheet-frame" style="min-height:auto;">
       <table class="excel-table">
         <thead>
           <tr>
             <th>Hesap Kalemi</th>
             <th>Tür</th>
             <th>Tekrar / Dönem</th>
-            <th style="text-align: right;">Varsayılan Tutar</th>
+            <th style="text-align:right;">Varsayılan Tutar</th>
             <th></th>
           </tr>
         </thead>
