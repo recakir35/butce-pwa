@@ -150,15 +150,49 @@ function formatPeriodOptionLabel(ym) {
   return `${ym} (${mName} ${y})`;
 }
 
+function parseMoneyInput(raw) {
+  if (raw === null || raw === undefined) return NaN;
+  const str = String(raw).trim().replace(/\s+/g, "");
+  if (!str) return NaN;
+  if (str.includes(",")) {
+    return Number(str.replace(/\./g, "").replace(",", "."));
+  }
+  const dotParts = str.split(".");
+  if (dotParts.length > 2) {
+    return Number(str.replace(/\./g, ""));
+  }
+  return Number(str);
+}
+
+function formatAmountWithGrouping(val) {
+  if (val === null || val === undefined || String(val).trim() === "") return "";
+  const num = typeof val === "number" ? val : parseMoneyInput(val);
+  if (Number.isNaN(num)) return String(val);
+  return num.toLocaleString("tr-TR", {
+    minimumFractionDigits: Number.isInteger(num) ? 0 : 2,
+    maximumFractionDigits: 2
+  });
+}
+
+function getAmountInputValue(el) {
+  if (!el) return "";
+  const raw = el.value.trim();
+  if (!raw) return "";
+  const parsed = parseMoneyInput(raw);
+  return Number.isNaN(parsed) ? raw : String(parsed);
+}
+
 function formatTL(val) {
-  return `${Number(val || 0).toLocaleString("tr-TR", {
+  const num = typeof val === "number" ? val : parseMoneyInput(val);
+  return `${Number(Number.isNaN(num) ? 0 : num).toLocaleString("tr-TR", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   })} TL`;
 }
 
 function formatSignedTL(val) {
-  const num = Number(val || 0);
+  const parsed = typeof val === "number" ? val : parseMoneyInput(val);
+  const num = Number.isNaN(parsed) ? 0 : parsed;
   const sign = num > 0 ? "+" : "";
   return `${sign}${num.toLocaleString("tr-TR", {
     minimumFractionDigits: 2,
@@ -360,6 +394,10 @@ function getCardPeriodTotal(period, cardId) {
     }, 0);
 }
 
+function getTotalCcInstallmentsForPeriod(period) {
+  return creditCards.reduce((sum, card) => sum + getCardPeriodTotal(period, card.id), 0);
+}
+
 function getSyncedCardAmountsForPeriod(period) {
   const syncedByKalemId = {};
   for (const card of creditCards) {
@@ -436,7 +474,7 @@ function initializeNewMonthData(targetPeriod) {
             sub.fixedAmount !== undefined && sub.fixedAmount !== null && sub.fixedAmount !== ""
               ? String(sub.fixedAmount)
               : "";
-          const n = parseFloat(fixedSubAmt);
+          const n = parseMoneyInput(fixedSubAmt);
           if (!Number.isNaN(n)) subSum += n;
 
           if (!pData.subOverrides[subOvKey]) {
@@ -819,7 +857,7 @@ function buildGroupEntriesForFlow(selectedPeriod, targetFlow) {
 
     if (hasChildren) {
       const subSum = children.reduce((acc, c) => {
-        const n = parseFloat(c.amount);
+        const n = parseMoneyInput(c.amount);
         return acc + (Number.isNaN(n) ? 0 : n);
       }, 0);
       parentAmount = String(subSum);
@@ -864,18 +902,24 @@ function renderPeriodTables() {
 
   let incomeTotal = 0;
   for (const grp of incomeGroups) {
-    const numAmt = parseFloat(grp.parent.amount);
+    const numAmt = parseMoneyInput(grp.parent.amount);
     if (!Number.isNaN(numAmt)) incomeTotal += numAmt;
   }
 
   let expenseTotal = 0;
   let expensePaidTotal = 0;
+  const totalCcInstallments = getTotalCcInstallmentsForPeriod(selectedPeriod);
 
   if (!expenseGroups.length) {
     expenseSheetFrame.classList.add("empty");
     expenseTableBody.innerHTML = `
       <tr>
         <td colspan="5" class="item-meta">Bu dönem için gider kalemi bulunmuyor.</td>
+      </tr>
+      <tr class="summary-row">
+        <td>Kredi Kartı Taksit Toplamı (${escapeHtml(selectedPeriod)})</td>
+        <td style="text-align:right;">${formatTL(totalCcInstallments)}</td>
+        <td colspan="3"></td>
       </tr>
       <tr class="summary-row">
         <td>Toplam Gider</td>
@@ -899,22 +943,33 @@ function renderPeriodTables() {
 
     for (const grp of expenseGroups) {
       const p = grp.parent;
-      const numAmt = parseFloat(p.amount);
+      const numAmt = parseMoneyInput(p.amount);
       const validAmt = Number.isNaN(numAmt) ? 0 : numAmt;
       expenseTotal += validAmt;
 
+      let parentPaidForRow = false;
       if (p.hasChildren) {
+        let childSum = 0;
+        let childPaidSum = 0;
         for (const ch of grp.children) {
-          const chAmt = parseFloat(ch.amount);
-          if (!Number.isNaN(chAmt) && ch.paid) {
-            expensePaidTotal += chAmt;
+          const chAmt = parseMoneyInput(ch.amount);
+          const validChAmt = Number.isNaN(chAmt) ? 0 : chAmt;
+          childSum += validChAmt;
+          if (ch.paid) {
+            childPaidSum += validChAmt;
+            expensePaidTotal += validChAmt;
           }
         }
-      } else if (p.paid) {
-        expensePaidTotal += validAmt;
+        parentPaidForRow = grp.children.length > 0 && childPaidSum >= childSum && childSum > 0;
+      } else {
+        parentPaidForRow = Boolean(p.paid);
+        if (parentPaidForRow) {
+          expensePaidTotal += validAmt;
+        }
       }
 
       const parentLocked = p.hasChildren || p.isSyncedFromCard;
+      const parentUnpaidClass = !parentPaidForRow ? "unpaid-expense-row" : "";
 
       const paidCellHtml = p.hasChildren
         ? `<span class="item-meta">${p.allChildrenPaid ? "Tümü Ödendi" : "Alt kalemden"}</span>`
@@ -925,7 +980,7 @@ function renderPeriodTables() {
 
       htmlRows.push(`
         <tr
-          class="parent-row ${p.hasChildren ? "parent-has-children" : ""}"
+          class="parent-row ${p.hasChildren ? "parent-has-children" : ""} ${parentUnpaidClass}"
           data-key="${p.key}"
           data-kalem-id="${p.kalemId}"
           data-flow="expense"
@@ -936,10 +991,10 @@ function renderPeriodTables() {
           </td>
           <td>
             <input
-              type="number"
-              step="0.01"
+              type="text"
+              inputmode="decimal"
               class="cell-input num field-amount"
-              value="${escapeHtml(p.amount)}"
+              value="${escapeHtml(formatAmountWithGrouping(p.amount))}"
               placeholder="0,00"
               ${parentLocked ? "readonly" : ""}
             />
@@ -960,9 +1015,10 @@ function renderPeriodTables() {
       `);
 
       for (const ch of grp.children) {
+        const childUnpaidClass = !ch.paid ? "unpaid-expense-row" : "";
         htmlRows.push(`
           <tr
-            class="child-row"
+            class="child-row ${childUnpaidClass}"
             data-sub-ov-key="${ch.subOvKey}"
             data-kalem-id="${ch.kalemId}"
             data-flow="expense"
@@ -975,10 +1031,10 @@ function renderPeriodTables() {
             </td>
             <td>
               <input
-                type="number"
-                step="0.01"
+                type="text"
+                inputmode="decimal"
                 class="cell-input num field-sub-amount"
-                value="${escapeHtml(ch.amount)}"
+                value="${escapeHtml(formatAmountWithGrouping(ch.amount))}"
                 placeholder="0,00"
               />
             </td>
@@ -1007,6 +1063,11 @@ function renderPeriodTables() {
     const remainingTotal = Math.max(0, expenseTotal - expensePaidTotal);
 
     htmlRows.push(`
+      <tr class="summary-row">
+        <td>Kredi Kartı Taksit Toplamı (${escapeHtml(selectedPeriod)})</td>
+        <td style="text-align:right;">${formatTL(totalCcInstallments)}</td>
+        <td colspan="3"></td>
+      </tr>
       <tr class="summary-row">
         <td>Toplam Gider</td>
         <td style="text-align:right;">${formatTL(expenseTotal)}</td>
@@ -1068,10 +1129,10 @@ function renderPeriodTables() {
           </td>
           <td>
             <input
-              type="number"
-              step="0.01"
+              type="text"
+              inputmode="decimal"
               class="cell-input num field-amount"
-              value="${escapeHtml(p.amount)}"
+              value="${escapeHtml(formatAmountWithGrouping(p.amount))}"
               placeholder="0,00"
               ${p.hasChildren ? "readonly" : ""}
             />
@@ -1103,10 +1164,10 @@ function renderPeriodTables() {
             </td>
             <td>
               <input
-                type="number"
-                step="0.01"
+                type="text"
+                inputmode="decimal"
                 class="cell-input num field-sub-amount"
-                value="${escapeHtml(ch.amount)}"
+                value="${escapeHtml(formatAmountWithGrouping(ch.amount))}"
                 placeholder="0,00"
               />
             </td>
@@ -1156,7 +1217,7 @@ function updateRowValueFromDom(tr, shouldRerender = true) {
 
     pData.subOverrides[subOvKey] = {
       note: noteEl ? noteEl.value : prev.note ?? "",
-      amount: amtEl ? amtEl.value : prev.amount ?? "",
+      amount: amtEl ? getAmountInputValue(amtEl) : prev.amount ?? "",
       dueDate: dueEl ? dueEl.value : prev.dueDate ?? "",
       paid: paidEl ? paidEl.checked : Boolean(prev.paid)
     };
@@ -1177,7 +1238,7 @@ function updateRowValueFromDom(tr, shouldRerender = true) {
 
   pData.overrides[key] = {
     note: noteEl ? noteEl.value : prev.note ?? "",
-    amount: amountEl ? amountEl.value : prev.amount ?? "",
+    amount: amountEl ? getAmountInputValue(amountEl) : prev.amount ?? "",
     dueDate: dueEl ? dueEl.value : prev.dueDate ?? "",
     paid: paidEl ? paidEl.checked : Boolean(prev.paid)
   };
@@ -1503,7 +1564,7 @@ kalemForm.addEventListener("submit", (e) => {
 
   const name = kalemName.value.trim();
   const rawAmt = kalemAmount.value.trim();
-  const defaultAmount = rawAmt === "" ? null : Number(rawAmt);
+  const defaultAmount = rawAmt === "" ? null : parseMoneyInput(rawAmt);
   const flow = kalemFlow.value;
   const mode = kalemMode.value;
   const installments =
@@ -1627,7 +1688,7 @@ ccExpenseForm.addEventListener("submit", (e) => {
   }
 
   const desc = ccExpDesc.value.trim();
-  const totalAmount = Number(ccExpAmount.value);
+  const totalAmount = parseMoneyInput(ccExpAmount.value);
   const installments = Math.max(1, Number(ccExpInstallments.value) || 1);
   const dateVal = ccExpDate.value || getTodayDateValue();
   const startPeriod =
@@ -1672,6 +1733,22 @@ function handleTableInputChange(e) {
   updateRowValueFromDom(tr, !isNoteField);
 }
 
+function handleTableFocusIn(e) {
+  const target = e.target;
+  if (
+    target.classList?.contains("field-amount") ||
+    target.classList?.contains("field-sub-amount")
+  ) {
+    if (target.hasAttribute("readonly")) return;
+    const parsed = parseMoneyInput(target.value);
+    if (!Number.isNaN(parsed) && target.value.trim() !== "") {
+      target.value = String(parsed);
+    }
+  }
+}
+
+expenseTableBody.addEventListener("focusin", handleTableFocusIn);
+incomeTableBody.addEventListener("focusin", handleTableFocusIn);
 expenseTableBody.addEventListener("change", handleTableInputChange);
 incomeTableBody.addEventListener("change", handleTableInputChange);
 
