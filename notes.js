@@ -18,10 +18,11 @@ const REPEAT_SORT_ORDER = {
   none: 5
 };
 
-let notesList = []; // [ { id, text, group, period, dueDate, reminderAt, repeat, done, createdLabel } ]
+let notesList = []; // [ { id, text, group, period, dueDate, reminderAt, repeat, done, createdLabel, yearlySpawned } ]
 let noteGroupsList = [...DEFAULT_NOTE_GROUPS];
 let firedRemindersMap = {}; // { [noteId]: fireKey }
 let reminderIntervalId = null;
+let editingNoteId = null;
 
 let getActivePeriodFn = () => "";
 let getRegisteredPeriodsFn = () => [];
@@ -78,6 +79,36 @@ function toLocalDatetimeInputValue(dateObj) {
   const hh = String(dateObj.getHours()).padStart(2, "0");
   const mm = String(dateObj.getMinutes()).padStart(2, "0");
   return `${y}-${m}-${d}T${hh}:${mm}`;
+}
+
+function addYearsToPeriod(periodStr, yearsToAdd = 1) {
+  if (!periodStr) return "";
+  const match = /^(\d{4})-(\d{2})$/.exec(String(periodStr).trim());
+  if (!match) return periodStr;
+  const nextYear = Number(match[1]) + yearsToAdd;
+  return `${nextYear}-${match[2]}`;
+}
+
+function addYearsToDateInput(dateStr, yearsToAdd = 1) {
+  if (!dateStr) return "";
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr).trim());
+  if (!match) return dateStr;
+  const targetYear = Number(match[1]) + yearsToAdd;
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  // Şubat 29 gibi durumlarda ay taşmasını önle
+  const clamped = new Date(targetYear, month, 0).getDate();
+  const safeDay = Math.min(day, clamped);
+  return `${targetYear}-${String(month).padStart(2, "0")}-${String(safeDay).padStart(2, "0")}`;
+}
+
+function addYearsToDatetimeInput(dtStr, yearsToAdd = 1) {
+  if (!dtStr) return "";
+  const d = new Date(dtStr);
+  if (Number.isNaN(d.getTime())) return dtStr;
+  const next = new Date(d.getTime());
+  next.setFullYear(next.getFullYear() + yearsToAdd);
+  return toLocalDatetimeInputValue(next);
 }
 
 function computeNextReminderValue(currentReminderStr, repeat) {
@@ -142,7 +173,9 @@ export async function requestNotificationPermissionManual() {
 export function loadNotesFromStorage() {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_NOTES_KEY) || "[]");
-    notesList = Array.isArray(raw) ? raw.map((n) => ({ ...n, done: Boolean(n.done) })) : [];
+    notesList = Array.isArray(raw)
+      ? raw.map((n) => ({ ...n, done: Boolean(n.done), yearlySpawned: Boolean(n.yearlySpawned) }))
+      : [];
   } catch {
     notesList = [];
   }
@@ -176,7 +209,11 @@ export function getNoteGroupsData() {
 
 export function setNotesData(remoteNotes, remoteGroups = null) {
   if (Array.isArray(remoteNotes)) {
-    notesList = remoteNotes.map((n) => ({ ...n, done: Boolean(n.done) }));
+    notesList = remoteNotes.map((n) => ({
+      ...n,
+      done: Boolean(n.done),
+      yearlySpawned: Boolean(n.yearlySpawned)
+    }));
     localStorage.setItem(STORAGE_NOTES_KEY, JSON.stringify(notesList));
   }
   const merged = new Set([
@@ -237,9 +274,130 @@ export function syncNotePeriodOptions() {
   if (prevVal !== "" && periods.includes(prevVal)) {
     periodSelectEl.value = prevVal;
   } else if (prevVal === "") {
-    periodSelectEl.value = activePeriod || "";
+    periodSelectEl.value = editingNoteId ? "" : activePeriod || "";
   } else {
     periodSelectEl.value = activePeriod || "";
+  }
+}
+
+function ensureNoteEditControls() {
+  const formEl = document.getElementById("noteForm");
+  if (!formEl) return null;
+
+  let cancelBtn = document.getElementById("btnCancelNoteEdit");
+  if (!cancelBtn) {
+    cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.id = "btnCancelNoteEdit";
+    cancelBtn.className = "secondary-btn";
+    cancelBtn.textContent = "İptal";
+    cancelBtn.style.display = "none";
+    formEl.appendChild(cancelBtn);
+
+    cancelBtn.addEventListener("click", () => {
+      resetNoteForm();
+    });
+  }
+
+  const submitBtn = formEl.querySelector('button[type="submit"]');
+  return { formEl, submitBtn, cancelBtn };
+}
+
+function resetNoteForm() {
+  editingNoteId = null;
+  const controls = ensureNoteEditControls();
+  const textEl = document.getElementById("noteTextInput");
+  const groupEl = document.getElementById("noteGroupInput");
+  const periodEl = document.getElementById("notePeriodSelect");
+  const dueEl = document.getElementById("noteDueDateInput");
+  const reminderEl = document.getElementById("noteReminderAtInput");
+  const repeatEl = document.getElementById("noteRepeatSelect");
+
+  if (textEl) textEl.value = "";
+  if (groupEl) groupEl.value = "";
+  if (dueEl) dueEl.value = "";
+  if (reminderEl) reminderEl.value = "";
+  if (repeatEl) repeatEl.value = "none";
+  if (periodEl) {
+    const activePeriod = getActivePeriodFn();
+    periodEl.value = activePeriod || "";
+  }
+
+  if (controls?.submitBtn) controls.submitBtn.textContent = "Not Ekle";
+  if (controls?.cancelBtn) controls.cancelBtn.style.display = "none";
+}
+
+function startEditingNote(noteId) {
+  const target = notesList.find((n) => n.id === noteId);
+  if (!target) return;
+
+  editingNoteId = target.id;
+  syncNotePeriodOptions();
+
+  const textEl = document.getElementById("noteTextInput");
+  const groupEl = document.getElementById("noteGroupInput");
+  const periodEl = document.getElementById("notePeriodSelect");
+  const dueEl = document.getElementById("noteDueDateInput");
+  const reminderEl = document.getElementById("noteReminderAtInput");
+  const repeatEl = document.getElementById("noteRepeatSelect");
+  const controls = ensureNoteEditControls();
+
+  if (textEl) textEl.value = target.text || "";
+  if (groupEl) groupEl.value = target.group || "Genel";
+  if (periodEl) {
+    if (target.period && !Array.from(periodEl.options).some((o) => o.value === target.period)) {
+      const opt = document.createElement("option");
+      opt.value = target.period;
+      opt.textContent = target.period;
+      periodEl.appendChild(opt);
+    }
+    periodEl.value = target.period || "";
+  }
+  if (dueEl) dueEl.value = target.dueDate || "";
+  if (reminderEl) reminderEl.value = target.reminderAt || "";
+  if (repeatEl) repeatEl.value = target.repeat || "none";
+
+  if (controls?.submitBtn) controls.submitBtn.textContent = "Güncelle";
+  if (controls?.cancelBtn) controls.cancelBtn.style.display = "inline-block";
+
+  if (textEl) textEl.focus();
+}
+
+function spawnNextYearNoteIfNeeded(note) {
+  if (!note || !note.done) return;
+  if (note.repeat !== "yearly") return;
+  if (note.yearlySpawned) return;
+
+  const sourcePeriod = note.period || getActivePeriodFn() || getCurrentOrActiveMonth();
+  const nextPeriod = addYearsToPeriod(sourcePeriod, 1);
+  const nextDueDate = addYearsToDateInput(note.dueDate, 1);
+  const nextReminderAt = addYearsToDatetimeInput(note.reminderAt, 1);
+
+  const alreadyExists = notesList.some(
+    (other) =>
+      other.id !== note.id &&
+      other.text === note.text &&
+      (other.group || "Genel") === (note.group || "Genel") &&
+      (other.period || "") === nextPeriod &&
+      (other.reminderAt || "") === nextReminderAt &&
+      !other.done
+  );
+
+  note.yearlySpawned = true;
+
+  if (!alreadyExists) {
+    notesList.unshift({
+      id: `note_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      text: note.text,
+      group: note.group || "Genel",
+      period: nextPeriod,
+      dueDate: nextDueDate,
+      reminderAt: nextReminderAt,
+      repeat: "yearly",
+      done: false,
+      yearlySpawned: false,
+      createdLabel: new Date().toLocaleDateString("tr-TR")
+    });
   }
 }
 
@@ -303,6 +461,7 @@ export function renderPeriodNotesTable() {
 }
 
 export function renderNotesPanel() {
+  ensureNoteEditControls();
   renderNoteGroupDatalist();
   syncNotePeriodOptions();
   renderPeriodNotesTable();
@@ -352,7 +511,10 @@ export function renderNotesPanel() {
           ${metaParts ? `<div class="note-card-meta">${metaParts}</div>` : ""}
           <div class="note-card-footer">
             <span class="item-meta">${escapeNoteHtml(n.createdLabel || "")}</span>
-            <button type="button" class="del-btn" data-delete-note-id="${escapeNoteHtml(n.id)}">Sil</button>
+            <div class="row-actions">
+              <button type="button" class="edit-btn" data-edit-note-id="${escapeNoteHtml(n.id)}">Düzenle</button>
+              <button type="button" class="del-btn" data-delete-note-id="${escapeNoteHtml(n.id)}">Sil</button>
+            </div>
           </div>
         </div>
       `;
@@ -428,6 +590,7 @@ export function initNotesModule({ getActivePeriod, getRegisteredPeriods, onNotes
   if (typeof onNotesChange === "function") onChangeCallbackFn = onNotesChange;
 
   loadNotesFromStorage();
+  ensureNoteEditControls();
 
   const formEl = document.getElementById("noteForm");
   const textEl = document.getElementById("noteTextInput");
@@ -450,28 +613,51 @@ export function initNotesModule({ getActivePeriod, getRegisteredPeriods, onNotes
       const dueDate = dueEl ? dueEl.value : "";
       const reminderAt = reminderEl ? reminderEl.value : "";
       const repeat = repeatEl ? repeatEl.value : "none";
-      const createdLabel = new Date().toLocaleDateString("tr-TR");
 
       if (reminderAt && typeof Notification !== "undefined" && Notification.permission === "default") {
         await requestNotificationPermissionManual();
       }
 
-      notesList.unshift({
-        id: `note_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        text,
-        group,
-        period,
-        dueDate,
-        reminderAt,
-        repeat,
-        done: false,
-        createdLabel
-      });
+      if (editingNoteId) {
+        const idx = notesList.findIndex((n) => n.id === editingNoteId);
+        if (idx !== -1) {
+          const prev = notesList[idx];
+          const repeatChangedToYearly = repeat === "yearly" && prev.repeat !== "yearly";
+          notesList[idx] = {
+            ...prev,
+            text,
+            group,
+            period,
+            dueDate,
+            reminderAt,
+            repeat,
+            yearlySpawned: repeatChangedToYearly ? false : prev.yearlySpawned
+          };
+          if (notesList[idx].done && repeat === "yearly") {
+            spawnNextYearNoteIfNeeded(notesList[idx]);
+          }
+        }
+        resetNoteForm();
+      } else {
+        const createdLabel = new Date().toLocaleDateString("tr-TR");
+        notesList.unshift({
+          id: `note_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          text,
+          group,
+          period,
+          dueDate,
+          reminderAt,
+          repeat,
+          done: false,
+          yearlySpawned: false,
+          createdLabel
+        });
 
-      textEl.value = "";
-      if (dueEl) dueEl.value = "";
-      if (reminderEl) reminderEl.value = "";
-      if (repeatEl) repeatEl.value = "none";
+        textEl.value = "";
+        if (dueEl) dueEl.value = "";
+        if (reminderEl) reminderEl.value = "";
+        if (repeatEl) repeatEl.value = "none";
+      }
 
       saveNotesLocal();
       renderNotesPanel();
@@ -480,8 +666,17 @@ export function initNotesModule({ getActivePeriod, getRegisteredPeriods, onNotes
 
   if (listEl) {
     listEl.addEventListener("click", (e) => {
+      const editId = e.target.dataset.editNoteId;
+      if (editId) {
+        startEditingNote(editId);
+        return;
+      }
+
       const noteId = e.target.dataset.deleteNoteId;
       if (!noteId) return;
+      if (editingNoteId === noteId) {
+        resetNoteForm();
+      }
       notesList = notesList.filter((n) => n.id !== noteId);
       delete firedRemindersMap[noteId];
       saveNotesLocal();
@@ -497,7 +692,12 @@ export function initNotesModule({ getActivePeriod, getRegisteredPeriods, onNotes
       if (!noteId) return;
       const targetNote = notesList.find((n) => n.id === noteId);
       if (!targetNote) return;
+
       targetNote.done = e.target.checked;
+      if (targetNote.done && targetNote.repeat === "yearly") {
+        spawnNextYearNoteIfNeeded(targetNote);
+      }
+
       saveNotesLocal();
       renderNotesPanel();
     });
